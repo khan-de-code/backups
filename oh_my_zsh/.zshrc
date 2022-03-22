@@ -89,7 +89,7 @@ fi
 # Custom plugins may be added to $ZSH_CUSTOM/plugins/
 # Example format: plugins=(rails git textmate ruby lighthouse)
 # Add wisely, as too many plugins slow down shell startup.
-plugins=(git zsh-syntax-highlighting zsh-autosuggestions docker docker-compose colored-man-pages alias-finder poetry)
+plugins=(git zsh-syntax-highlighting zsh-autosuggestions docker docker-compose colored-man-pages alias-finder poetry copypath)
 
 source $ZSH/oh-my-zsh.sh
 source /Users/dbatz/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
