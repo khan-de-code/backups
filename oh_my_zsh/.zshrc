@@ -146,65 +146,10 @@ eval "$(pyenv virtualenv-init -)"
 TREE_IGNORE="cache|log|logs|node_modules|vendor"
 alias ls=' exa --group-directories-first'
 alias la=' ls -a'
-alias ll=' ls --header --long --group --all'
-alias tree=" exa --tree --long"
+alias ll=' ls --header --long --group --all --icons'
+alias tree=" exa --tree --long --icons"
 
-alias cleanup-branches="
-  gco master \
-  && echo -e '\n' \
-  && git pull \
-  && echo -e '\n' \
-  && git fetch --tags \
-  && echo -e '\n' \
-  && git fetch --prune \
-  && echo -e '\n' \
-  && git branch --merged | grep -v 'master' | xargs git branch -d"
-
-alias git-cleanup-branches=cleanup-branches
-
-alias playground="cd ~/testing_projects/playground"
-
-# Removes all non-text elements from the currently copied element in the clipboard
-alias plaintext="pbpaste | pbcopy"
-
-# Replace ls with exa
-alias ll="exa --long --classify --header --group --all --icons"
-alias ls="exa --classify --sort=.name --group-directories-first --all --icons"
-alias tree="exa --tree --all --icons"
-
-# -------------- functions ---------------
-
-alias poetry='f(){ 
-  poetry "$@";
-  updated_dependencies=false;
-
-  sort_toml () {
-    start=$1
-    end=$2
-
-    if [[ $start != $end ]]; then
-      ex -c "${start},${end} sort|w|q" pyproject.toml
-    fi;
-  }
-
-  if [[ "$@" == *"add"* || "$@" == *"init"* || "$@" == *"install"* || "$@" == *"remove"* || "$@" == *"update"* ]]; then
-    updated_dependencies=true;
-  fi;
-
-  if $updated_dependencies; then
-    echo "\nSorting pyproject.toml";
-
-    sort_reg=( $(awk "/^\[tool\.poetry\.dependencies\]/{flag=1; next}/^$/{flag=0}flag{print NR}" pyproject.toml) );
-    sort_dev=( $(awk "/^\[tool\.poetry\.dev-dependencies\]/{flag=1; next}/^$/{flag=0}flag{print NR}" pyproject.toml) );
-
-    sort_toml $sort_reg[2] $sort_reg[-1];
-    sort_toml $sort_dev[1] $sort_dev[-1];
-    
-  fi;
-
-  unset updated_dependencies; 
-  unset -f f; 
-}; f'
+alias git_cleanup=~/scripts/git_cleanup.sh
 
 alias update_pyenv_pip='f(){
   current_directory=$(pwd)
@@ -237,6 +182,40 @@ alias update_pyenv_pip='f(){
   cd $current_directory  
 }; f'
 
+# -------------- functions ---------------
+
+# alias poetry='f(){ 
+#   poetry "$@";
+#   updated_dependencies=false;
+
+#   sort_toml () {
+#     start=$1
+#     end=$2
+
+#     if [[ $start != $end ]]; then
+#       ex -c "${start},${end} sort|w|q" pyproject.toml
+#     fi;
+#   }
+
+#   if [[ "$@" == *"add"* || "$@" == *"init"* || "$@" == *"install"* || "$@" == *"remove"* || "$@" == *"update"* ]]; then
+#     updated_dependencies=true;
+#   fi;
+
+#   if $updated_dependencies; then
+#     echo "\nSorting pyproject.toml";
+
+#     sort_reg=( $(awk "/^\[tool\.poetry\.dependencies\]/{flag=1; next}/^$/{flag=0}flag{print NR}" pyproject.toml) );
+#     sort_dev=( $(awk "/^\[tool\.poetry\.dev-dependencies\]/{flag=1; next}/^$/{flag=0}flag{print NR}" pyproject.toml) );
+
+#     sort_toml $sort_reg[2] $sort_reg[-1];
+#     sort_toml $sort_dev[1] $sort_dev[-1];
+    
+#   fi;
+
+#   unset updated_dependencies; 
+#   unset -f f; 
+# }; f'
+
 # -------------- makefile autocomplete ---------------
 function _makefile_targets {
     local curr_arg;
@@ -257,7 +236,3 @@ function _makefile_targets {
     COMPREPLY=( $(compgen -W "${targets[@]}" -- $curr_arg ) );
 }
 complete -F _makefile_targets make
-
-
-# Fig post block. Keep at the bottom of this file.
-eval "$(fig init zsh post)"
