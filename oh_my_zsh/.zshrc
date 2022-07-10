@@ -23,12 +23,6 @@ export ZSH="/Users/dbatz/.oh-my-zsh"
 # See https://github.com/ohmyzsh/ohmyzsh/wiki/Themes
 ZSH_THEME="powerlevel10k/powerlevel10k"
 
-# ------------ Ruby -----------------
-if [ -d "/usr/local/opt/ruby/bin" ]; then
-  export PATH=/usr/local/opt/ruby/bin:$PATH
-  export PATH=$(gem environment gemdir)/bin:$PATH
-fi
-
 # Set list of themes to pick from when loading at random
 # Setting this variable when ZSH_THEME=random will cause zsh to load
 # a theme from this variable instead of looking in $ZSH/themes/
@@ -89,7 +83,7 @@ fi
 # Custom plugins may be added to $ZSH_CUSTOM/plugins/
 # Example format: plugins=(rails git textmate ruby lighthouse)
 # Add wisely, as too many plugins slow down shell startup.
-plugins=(git zsh-syntax-highlighting zsh-autosuggestions docker docker-compose colored-man-pages alias-finder poetry copypath)
+plugins=(git timewarrior zsh-autosuggestions zsh-syntax-highlighting colored-man-pages direnv nvm docker docker-compose poetry copypath)
 
 source $ZSH/oh-my-zsh.sh
 source /Users/dbatz/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
@@ -107,9 +101,6 @@ source /Users/dbatz/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
 # else
 #   export EDITOR='mvim'
 # fi
-
-# Set editor for kb
-export EDITOR='code'
 
 # Compilation flags
 # export ARCHFLAGS="-arch x86_64"
@@ -152,7 +143,11 @@ eval "$(pyenv init -)"
 eval "$(pyenv virtualenv-init -)"
 
 # -------------- aliases ---------------
-alias work="cd ~/work_projects"
+TREE_IGNORE="cache|log|logs|node_modules|vendor"
+alias ls=' exa --group-directories-first'
+alias la=' ls -a'
+alias ll=' ls --header --long --group --all'
+alias tree=" exa --tree --long"
 
 alias cleanup-branches="
   gco master \
