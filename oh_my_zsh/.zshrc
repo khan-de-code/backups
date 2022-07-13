@@ -135,14 +135,20 @@ load-nvmrc() {
 add-zsh-hook chpwd load-nvmrc
 load-nvmrc
 
-# ------------ pyenv -----------------
+# ------------ History Modification -----------------
+setop HIST_IGNORE_SPACE
+setop HIST_IGNORE_DUPS
+
+HISTIGNORE="&:ls:[bf]g:exit:reset:clear:cd:cd ..:cd..:zh"
+
+# ------------ Pyenv -----------------
 export PYENV_ROOT="$HOME/.pyenv"
 export PATH="$PYENV_ROOT/bin:$PATH"
 eval "$(pyenv init --path)"
 eval "$(pyenv init -)"
 eval "$(pyenv virtualenv-init -)"
 
-# -------------- aliases ---------------
+# -------------- Aliases ---------------
 TREE_IGNORE="cache|log|logs|node_modules|vendor"
 alias ls=' exa --group-directories-first'
 alias la=' ls -a'
