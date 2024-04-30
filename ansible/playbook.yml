@@ -728,8 +728,6 @@
             value: "local      clean='%129F'   # purple foreground"
           - regex: '(( $#branch > 32 )) && branch[13,-13]="…"  # <-- this line'
             value: '# (( $#branch > 32 )) && branch[13,-13]="…"  # <-- this line'
-          - regex: typeset -g POWERLEVEL9K_VCS_UNTRACKED_ICON=.*
-            value: "  typeset -g POWERLEVEL9K_VCS_UNTRACKED_ICON='\uf128'"
 
     - name: Update p10k theme
       ansible.builtin.lineinfile:
