@@ -1,0 +1,743 @@
+---
+- name: My first play
+  hosts: myhosts
+  vars_prompt:
+    - name: ssh_file_name
+      prompt: What would you like the Github SSH file to be named?
+      private: false
+
+    - name: github_email_address
+      prompt: What is the Github email address for generating an SSH key?
+      private: false
+      unsafe: true
+
+    - name: github_ssh_password
+      prompt: Enter the password you want to use for the Github SSH openssh_key
+      unsafe: true
+      confirm: true
+      private: true
+
+  pre_tasks:
+    - name: Update, Upgrade, and Remove apt Packages
+      become: true
+      ansible.builtin.apt:
+        upgrade: true
+        update_cache: true
+        cache_valid_time: 86400 # One Day
+        autoremove: true
+
+    - name: Ensure build-essential Is Installed
+      become: true
+      ansible.builtin.apt:
+        name: build-essential
+        state: present
+        update_cache: true
+
+    - name: Check if Homebrew is Installed
+      ansible.builtin.shell: "command -v brew"
+      register: homebrew_exists
+      ignore_errors: true
+      changed_when: false
+
+    - name: Homebrew Check Failed
+      when: homebrew_exists is failed
+      ansible.builtin.debug:
+        msg: "Homebrew must be installed first."
+      failed_when: true
+
+    - name: Exit Play if Homebrew Not Installed
+      when: homebrew_exists is failed
+      ansible.builtin.meta: end_play
+
+    - name: Update Homebrew
+      community.general.homebrew:
+        update_homebrew: true
+
+  tasks:
+    - name: Create .ssh Directory if it Doesn't Exist
+      ansible.builtin.file:
+        path: ~/.ssh
+        state: directory
+        mode: u=rwx,g=,o=
+
+    - name: Check if Github SSH File Exists
+      ansible.builtin.stat:
+        path: ~/.ssh/{{ ssh_file_name }}
+      register: github_ssh_file
+
+    - name: Generate Github SSH Key
+      when: not github_ssh_file.stat.exists
+      community.crypto.openssh_keypair:
+        path: ~/.ssh/{{ ssh_file_name }}
+        type: ed25519
+        state: present
+        comment: "{{ github_email_address }}"
+        force: false
+        passphrase: "{{ github_ssh_password }}"
+
+    - name: Evaluating the authentication agent & adding the key...
+      when: not github_ssh_file.stat.exists
+      ansible.builtin.shell: |-
+        eval "$(ssh-agent)"
+        ssh-add ~/.ssh/{{ ssh_file_name }}
+
+    - name: Create config File If It Does Not Exist
+      ansible.builtin.file:
+        path: ~/.ssh/config
+        state: touch
+        mode: u=rwx,g=,o=
+
+    - name: Check if config File Already Contains Work SSH Entry
+      ansible.builtin.lineinfile:
+        state: absent
+        path: ~/.ssh/config
+        regexp: ^Host work.github.com$
+      check_mode: true
+      changed_when: false
+      register: check_config_file
+
+    - name: Update config File With SSH Info for Github
+      when: not check_config_file.found
+      ansible.builtin.lineinfile:
+        path: ~/.ssh/config
+        line: |
+          Host work.github.com
+              HostName github.com
+              User git
+              IdentityFile ~/.ssh/{{ ssh_file_name }}
+              IdentitiesOnly yes
+
+    - name: Ensure ZSH is Installed
+      become: true
+      ansible.builtin.apt:
+        name: zsh
+        state: present
+        update_cache: true
+
+    - name: Run whoami
+      become: false
+      action: command whoami
+      register: whoami
+      changed_when: false
+
+    - name: Ensure ZSH is the Default Shell
+      become: true
+      ansible.builtin.user:
+        name: "{{ whoami.stdout }}"
+        shell: /usr/bin/zsh
+
+    - name: Check if OHMYZSH Executable Exists
+      ansible.builtin.stat:
+        path: ~/.oh-my-zsh/oh-my-zsh.sh
+      register: ohmyzsh_file_status
+
+    - name: Download Oh My Zsh installation script
+      when: not ohmyzsh_file_status.stat.exists
+      ansible.builtin.get_url:
+        url: https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh
+        dest: /tmp/install_ohmyzsh.sh
+
+    - name: Run Oh My Zsh installation script
+      when: not ohmyzsh_file_status.stat.exists
+      ansible.builtin.shell: sh /tmp/install_ohmyzsh.sh --unattended
+      register: ohmyzsh_result
+      failed_when: "'FAILED' in ohmyzsh_result.stderr"
+
+    - name: Update .zshrc With Homebrew Essentials
+      block:
+        - name: Update EVAL Facts
+          ansible.builtin.set_fact:
+            eval_marker_begin: "# -------------- Begin Evals ---------------"
+            eval_marker_end: "# -------------- End Evals ---------------"
+            eval_block: |-
+              eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+
+        - name: Update .zshrc
+          ansible.builtin.blockinfile:
+            path: ~/.zshrc
+            marker: "{mark}"
+            marker_begin: "{{ eval_marker_begin }}"
+            marker_end: "{{ eval_marker_end }}"
+            block: |-
+              {{ eval_block }}
+            insertbefore: ^plugin(.*)
+            append_newline: true
+            prepend_newline: true
+
+    - name: Ensure nala is Installed
+      become: true
+      ansible.builtin.apt:
+        name: nala
+        state: present
+        update_cache: true
+
+    - name: Check if cargo is Installed
+      ansible.builtin.shell: command -v cargo
+      register: cargo_exists
+      ignore_errors: true
+      changed_when: false
+
+    - name: Install rust/cargo
+      when: cargo_exists is failed
+      ansible.builtin.shell: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+      tags:
+        - rust
+
+    - name: Update PATH in .zshrc
+      block:
+        - name: Update PATH Facts
+          ansible.builtin.set_fact:
+            path_marker_begin: "# -------------- Begin Update PATH ---------------"
+            path_marker_end: "# -------------- End Update PATH ---------------"
+            path_block: export PATH="$HOME/.cargo/bin:$PATH"
+
+        - name: Update .zshrc
+          ansible.builtin.blockinfile:
+            path: ~/.zshrc
+            marker: "{mark}"
+            marker_begin: "{{ path_marker_begin }}"
+            marker_end: "{{ path_marker_end }}"
+            block: |-
+              {{ path_block }}
+            append_newline: true
+            prepend_newline: true
+
+    - name: Source zshrc
+      ansible.builtin.shell: source ~/.zshrc
+      args:
+        executable: /bin/zsh
+
+    - name: Ensure bat is Installed
+      community.general.homebrew:
+        name: bat
+        state: present
+
+    - name: Ensure EZA is Installed
+      community.general.homebrew:
+        name: eza
+        state: present
+
+    - name: Update Alias in .zshrc
+      block:
+        - name: Update Alias Facts
+          ansible.builtin.set_fact:
+            alias_marker_begin: "# -------------- Begin Alias ---------------"
+            alias_marker_end: "# -------------- End Alias ---------------"
+            alias_block: |-
+              alias ls=' eza --group-directories-first'
+              alias la=' ls -a'
+              alias ll=' ls --header --long --group --all --icons'
+              alias tree=' eza --tree --long --icons'
+
+        - name: Update .zshrc
+          ansible.builtin.blockinfile:
+            path: ~/.zshrc
+            marker: "{mark}"
+            marker_begin: "{{ alias_marker_begin }}"
+            marker_end: "{{ alias_marker_end }}"
+            block: |-
+              {{ alias_block }}
+            append_newline: true
+            prepend_newline: true
+
+    - name: Ensure taskwarrior is Installed
+      become: true
+      ansible.builtin.apt:
+        name: taskwarrior
+        state: present
+        update_cache: true
+
+    - name: Check if ripgrep is Installed
+      ansible.builtin.shell: command -v rg
+      register: ripgrep_exists
+      ignore_errors: true
+      changed_when: false
+
+    - name: Ensure ripgrep is Installed
+      when: ripgrep_exists is failed
+      community.general.homebrew:
+        name: ripgrep
+        state: present
+
+    - name: Ensure fd-find is Installed
+      community.general.homebrew:
+        name: fd
+        state: present
+
+    - name: Ensure fzf is Installed
+      community.general.homebrew:
+        name: fzf
+        state: present
+
+    - name: Update .zshrc With fzf EVAL
+      block:
+        - name: Update EVAL Facts
+          ansible.builtin.set_fact:
+            eval_block: |-
+              {{ eval_block }}
+              eval "$(fzf --zsh)"
+
+        - name: Update .zshrc
+          ansible.builtin.blockinfile:
+            path: ~/.zshrc
+            marker: "{mark}"
+            marker_begin: "{{ eval_marker_begin }}"
+            marker_end: "{{ eval_marker_end }}"
+            block: |-
+              {{ eval_block }}
+
+    - name: Ensure kubectl is Installed
+      community.general.homebrew:
+        name: kubectl
+        state: present
+
+    - name: Check if nvm is Installed
+      ansible.builtin.shell: command -v nvm
+      register: nvm_exists
+      ignore_errors: true
+      changed_when: false
+
+    - name: Ensure nvm is Installed
+      when: nvm_exists is failed
+      ansible.builtin.shell: >
+        curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
+      args:
+        creates: "{{ ansible_env.HOME }}/.nvm/nvm.sh"
+
+    - name: Check if docker is Installed
+      ansible.builtin.shell: command -v docker
+      register: docker_exists
+      ignore_errors: true
+      changed_when: false
+
+    - name: Ensure docker is Installed
+      when: docker_exists is failed
+      become: true
+      block:
+        - name: Add Docker's Official GPG Key
+          ansible.builtin.shell: |-
+            sudo apt-get update
+            sudo apt-get install ca-certificates curl
+            sudo install -m 0755 -d /etc/apt/keyrings
+            sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+            sudo chmod a+r /etc/apt/keyrings/docker.asc
+
+        - name: Add the Repository to apt Sources
+          ansible.builtin.shell: |-
+            echo \
+              "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu \
+              $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
+              sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+            sudo apt-get update
+
+        - name: Install docker
+          ansible.builtin.apt:
+            name:
+              - docker-ce
+              - docker-ce-cli
+              - containerd.io
+              - docker-buildx-plugin
+              - docker-compose-plugin
+            state: present
+            update_cache: true
+
+        - name: Run Docker Post Install Steps
+          become: true
+          ansible.builtin.shell: |-
+            sudo groupadd docker
+            sudo usermod -aG docker $USER
+            newgrp docker
+            sudo systemctl enable docker.service
+            sudo systemctl enable containerd.service
+
+    - name: Ensure pyenv is Installed
+      community.general.homebrew:
+        name: pyenv
+        state: present
+
+    - name: Update Pyenv Environment Variable in .zshrc
+      block:
+        - name: Update ENV Facts
+          ansible.builtin.set_fact:
+            env_marker_begin: "# -------------- Begin Environment Variables ---------------"
+            env_marker_end: "# -------------- End Environment Variables ---------------"
+            env_block: |-
+              export PYENV_ROOT="$HOME/.pyenv"
+
+        - name: Update .zshrc
+          ansible.builtin.blockinfile:
+            path: ~/.zshrc
+            marker: "{mark}"
+            marker_begin: "{{ env_marker_begin }}"
+            marker_end: "{{ env_marker_end }}"
+            block: |-
+              {{ env_block }}
+            append_newline: true
+            prepend_newline: true
+
+    - name: Update Pyenv PATH in .zshrc
+      block:
+        - name: Update PATH Facts
+          ansible.builtin.set_fact:
+            path_block: |-
+              {{ path_block }}
+              [[ -d $PYENV_ROOT/bin ]] && export PATH="$PYENV_ROOT/bin:$PATH"
+
+        - name: Update .zshrc
+          ansible.builtin.blockinfile:
+            path: ~/.zshrc
+            marker: "{mark}"
+            marker_begin: "{{ path_marker_begin }}"
+            marker_end: "{{ path_marker_end }}"
+            block: |-
+              {{ path_block }}
+
+    - name: Update Pyenv EVAL in .zshrc
+      block:
+        - name: Update EVAL Facts
+          ansible.builtin.set_fact:
+            eval_block: |-
+              {{ eval_block }}
+              eval "$(pyenv init -)"
+
+        - name: Update .zshrc
+          ansible.builtin.blockinfile:
+            path: ~/.zshrc
+            marker: "{mark}"
+            marker_begin: "{{ eval_marker_begin }}"
+            marker_end: "{{ eval_marker_end }}"
+            block: |-
+              {{ eval_block }}
+
+    - name: Ensure pyenv-virtualenv is Installed
+      community.general.homebrew:
+        name: pyenv-virtualenv
+        state: present
+
+    - name: Update pyenv-virtualenv EVAL in .zshrc
+      block:
+        - name: Update EVAL Facts
+          ansible.builtin.set_fact:
+            eval_block: |-
+              {{ eval_block }}
+              eval "$(pyenv virtualenv-init -)"
+
+        - name: Update .zshrc
+          ansible.builtin.blockinfile:
+            path: ~/.zshrc
+            marker: "{mark}"
+            marker_begin: "{{ eval_marker_begin }}"
+            marker_end: "{{ eval_marker_end }}"
+            block: |-
+              {{ eval_block }}
+
+    - name: Install Latest Stable Version of Python via pyenv
+      block:
+        - name: Identify Latest Release of Python
+          ansible.builtin.shell: |-
+            pyenv install --list | grep -v - | grep -v a | grep -v b | tail -1 | tr -d ' '
+          register: latest_python_version
+
+        - name: Check if Python Version Already Installed
+          ansible.builtin.shell: |-
+            pyenv versions
+          register: version_installed
+
+        - name: Install Latest Release of Python
+          when: latest_python_version.stdout not in version_installed.stdout
+          ansible.builtin.shell: |-
+            pyenv install {{ latest_python_version.stdout }}
+          register: pyenv_install_result
+
+        - name: Set Latest Release of Python as Global Version
+          ansible.builtin.shell: |-
+            pyenv global {{ latest_python_version.stdout }}
+
+    - name: Ensure poetry on is Installed on Global Python
+      ansible.builtin.pip:
+        name: poetry
+        state: present
+
+    - name: Update .zshrc With Plugins
+      ansible.builtin.lineinfile:
+        dest: ~/.zshrc
+        regexp: ^plugins=(.*)
+        line: >-
+          plugins=(git alias-finder aliases autojump aws bgnotify colored-man-pages docker dotenv fd fzf kubectl nvm pip poetry pyenv
+          ripgrep rust taskwarrior zsh-autosuggestions zsh-syntax-highlighting)
+
+    - name: Update .zshrc With Makefile Autocomplete
+      ansible.builtin.blockinfile:
+        path: ~/.zshrc
+        marker: "{mark}"
+        marker_begin: "# -------------- Begin Makefile Autocomplete ---------------"
+        marker_end: "# -------------- End Makefile Autocomplete ---------------"
+        block: |-
+          function _makefile_targets {
+              local curr_arg;
+              local targets;
+
+              # Find makefile targets available in the current directory
+              targets=''
+              if [[ -e "$(pwd)/Makefile" ]]; then
+                  targets=$( \
+                      grep -oE '^[a-zA-Z0-9_-]+:' Makefile \
+                      | sed 's/://' \
+                      | tr '\n' ' ' \
+                  )
+              fi
+
+              # Filter targets based on user input to the bash completion
+              curr_arg=${COMP_WORDS[COMP_CWORD]}
+              COMPREPLY=( $(compgen -W "${targets[@]}" -- $curr_arg ) );
+          }
+          complete -F _makefile_targets make
+        append_newline: true
+        prepend_newline: true
+
+    - name: Ensure zsh-autosuggestions is Installed
+      ansible.builtin.shell: |-
+        if [ ! -d ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-autosuggestions ]; then
+          git clone https://github.com/zsh-users/zsh-autosuggestions ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-autosuggestions
+        fi
+
+    - name: Ensure zsh-syntax-highlighting is Installed
+      ansible.builtin.shell: |-
+        if [ ! -d ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-autosuggestions ]; then
+          git clone https://github.com/zsh-users/zsh-syntax-highlighting.git ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-syntax-highlighting
+        fi
+
+    - name: Ensure powerlevel10k is Installed
+      block:
+        - name: Download powerlevel10k
+          ansible.builtin.shell: |-
+            if [! -d ${ZSH_CUSTOM:-$HOME/.oh-my-zsh/custom}/themes/powerlevel10k ]; then
+              git clone --depth=1 https://github.com/romkatv/powerlevel10k.git ${ZSH_CUSTOM:-$HOME/.oh-my-zsh/custom}/themes/powerlevel10k
+            fi
+
+        - name: Update .zshrc
+          ansible.builtin.lineinfile:
+            dest: ~/.zshrc
+            regexp: ^ZSH_THEME.*$
+            line: ZSH_THEME="powerlevel10k/powerlevel10k"
+
+    - name: Ensure just is Installed
+      become: true
+      ansible.builtin.apt:
+        name: just
+        state: present
+        update_cache: true
+
+    - name: Ensure tldr is Installed
+      community.general.homebrew:
+        name: tldr
+        state: present
+
+    - name: Ensure Latest Version of git is Installed
+      community.general.homebrew:
+        name: git
+        state: present
+
+    - name: Ensure vscode is Installed
+      become: true
+      ansible.builtin.apt:
+        name: code
+        state: present
+        update_cache: true
+
+    - name: Setup vscode
+      block:
+        - name: Vscode Extensions to Install
+          ansible.builtin.set_fact:
+            vscode_extensions:
+              - redhat.ansible
+              - redhat.vscode-yaml
+              - ms-python.python
+              - ms-python.vscode-pylance
+              - ms-azuretools.vscode-docker
+              - eamodio.gitlens
+              - esbenp.prettier-vscode
+              - formulahendry.auto-close-tag
+              - aaron-bond.better-comments
+              - alefragnani.Bookmarks
+              - streetsidesoftware.code-spell-checker
+              - usernamehw.errorlens
+              - tal7aouy.icons
+              - kevinrose.vsc-python-indent
+              - Gruntfuggly.todo-tree
+              - rokoroku.vscode-theme-darcula
+
+        - name: Install vscode Extensions
+          ansible.builtin.shell: code --install-extension {{ item }} --force
+          loop: "{{ vscode_extensions }}"
+
+        - name: Download Dank Mono From gumroad.com
+          ansible.builtin.pause:
+            prompt: Before continuing execution, download and install Dank Mono Font from gumroad.com
+
+        - name: Read vscode Settings File
+          ansible.builtin.include_vars:
+            file: ~/.config/Code/User/settings.json
+            name: vscode_settings
+
+        - name: Update vscode Settings
+          ansible.builtin.set_fact:
+            vscode_settings: >-
+              {{
+              vscode_settings | default([]) |
+              combine({
+              'editor.fontFamily': 'Dank Mono',
+              'editor.fontLigatures': true,
+              'editor.bracketPairColorization.enabled': true,
+              'editor.guides.bracketPairs':'active',
+              "files.autoSave": "afterDelay",
+              "[python]": {
+                  "editor.rulers": [100]
+              },
+              })
+              }}
+
+        - name: Write vscode Settings to File
+          ansible.builtin.copy:
+            content: "{{ vscode_settings | to_nice_json }}"
+            dest: ~/.config/Code/User/settings.json
+
+    - name: Install terminal font
+      ansible.builtin.shell: |-
+        wget -O /tmp/Hack.zip 'https://github.com/ryanoasis/nerd-fonts/releases/download/v3.2.1/Hack.zip'
+        unzip -o /tmp/Hack.zip -d /tmp/hack_nerd_font
+        cp /tmp/hack_nerd_font/*.ttf ~/.local/share/fonts
+
+    - name: Chekc if kitty is installed
+      ansible.builtin.shell: command -v kitty
+      register: kitty_installed
+      ignore_errors: true
+      changed_when: false
+
+    - name: Install and Configure kitty terminal
+      when: kitty_installed is failed
+      block:
+        - name: Install kitty terminal
+          ansible.builtin.shell: |-
+            curl -L https://sw.kovidgoyal.net/kitty/installer.sh | sh /dev/stdin
+
+        - name: Check if ~/.local/bin is in System Wide PATH
+          ansible.builtin.shell: |-
+            echo $PATH | grep /home/{{ whoami.stdout }}/.local/bin
+          register: local_bin_path
+
+        - name: Add ~/.local/bin to PATH if not there
+          when: local_bin_path is failed
+          block:
+            - name: Update PATH Facts
+              ansible.builtin.set_fact:
+                path_block: |-
+                  {{ path_block }}
+                  export PATH="$HOME/.local/bin:$PATH"
+
+            - name: Update .zshrc
+              ansible.builtin.blockinfile:
+                path: ~/.zshrc
+                marker: "{mark}"
+                marker_begin: "{{ path_marker_begin }}"
+                marker_end: "{{ path_marker_end }}"
+                block: |-
+                  {{ path_block }}
+
+        - name: Integrate Kitty into Desktop Environment
+          ansible.builtin.shell: |-
+            # Create symbolic links to add kitty and kitten to PATH (assuming ~/.local/bin is in your system-wide PATH)
+            ln -sf ~/.local/kitty.app/bin/kitty ~/.local/kitty.app/bin/kitten ~/.local/bin/
+
+            # Place the kitty.desktop file somewhere it can be found by the OS
+            cp ~/.local/kitty.app/share/applications/kitty.desktop ~/.local/share/applications/
+
+            # If you want to open text files and images in kitty via your file manager also add the kitty-open.desktop file
+            cp ~/.local/kitty.app/share/applications/kitty-open.desktop ~/.local/share/applications/
+
+            # Update the paths to the kitty and its icon in the kitty desktop file(s)
+            sed -i "s|Icon=kitty|Icon=/home/$USER/.local/kitty.app/share/icons/hicolor/256x256/apps/kitty.png|g" ~/.local/share/applications/kitty*.desktop
+            sed -i "s|Exec=kitty|Exec=/home/$USER/.local/kitty.app/bin/kitty|g" ~/.local/share/applications/kitty*.desktop
+
+        - name: Delete kitty Config File if Exists
+          ansible.builtin.file:
+            state: absent
+            dest: ~/.config/kitty/kitty.conf
+
+        - name: Update kitty Config
+          ansible.builtin.lineinfile:
+            create: true
+            mode: u=rwx,g=,o=
+            dest: ~/.config/kitty/kitty.conf
+            regexp: "((.|\n)*)"
+            line: |
+              font_family      HackNerdFontMono
+              bold_font        HackNerdFontMono-Bold
+              italic_font      HackNerdFontMono-Italic
+              bold_italic_font HackNerdFontMono-BoldItalic
+
+              map clear printf '\033[2J\033[3J\033[1;1H'
+
+              bell_on_tab             󰂟
+              tab_bar_edge            top
+              tab_title_template      {index}: {title}
+              focus_follows_mouse     yes
+              active_tab_foreground   #000
+              active_tab_background   #73D216
+              active_tab_font_style   italic
+              inactive_tab_foreground #444
+              inactive_tab_background #999
+              inactive_tab_font_style normal
+
+              enable_audio_bell     yes
+              visual_bell_duration  2.0
+              visual_bell_color     #FF0000
+              window_alert_on_bell  yes
+
+              copy_on_select  yes
+              map ctrl+c      copy_and_clear_or_interrupt
+              map ctrl+v      paste_from_clipboard
+
+    - name: Configure git
+      ansible.builtin.shell: |-
+        git config --global user.email "{{ github_email_address }}"
+        git config --global user.name "Dawson Batz"
+
+    - name: Vscode Extensions to Install
+      ansible.builtin.set_fact:
+        p10k_updates:
+          - regex: typeset -g POWERLEVEL9K_DIR_FOREGROUND=.*
+            value: typeset -g POWERLEVEL9K_DIR_FOREGROUND=28
+          - regex: typeset -g POWERLEVEL9K_DIR_ANCHOR_FOREGROUND=.*
+            value: typeset -g POWERLEVEL9K_DIR_ANCHOR_FOREGROUND=28
+          - regex: typeset -g POWERLEVEL9K_TASKWARRIOR_FOREGROUND=.*
+            value: typeset -g POWERLEVEL9K_TASKWARRIOR_FOREGROUND=9
+          - regex: typeset -g POWERLEVEL9K_PYENV_FOREGROUND=.*
+            value: typeset -g POWERLEVEL9K_PYENV_FOREGROUND=164
+          - regex: typeset -g POWERLEVEL9K_TIME_FOREGROUND=.*
+            value: typeset -g POWERLEVEL9K_TIME_FOREGROUND=255
+          - regex: typeset -g POWERLEVEL9K_STATUS_OK=.*
+            value: typeset -g POWERLEVEL9K_STATUS_OK=true
+          - regex: typeset -g POWERLEVEL9K_STATUS_ERROR=.*
+            value: typeset -g POWERLEVEL9K_STATUS_ERROR=true
+          - regex: typeset -g POWERLEVEL9K_VCS_CLEAN_FOREGROUND=.*
+            value: "  typeset -g POWERLEVEL9K_VCS_CLEAN_FOREGROUND=129"
+          - regex: typeset -g POWERLEVEL9K_VCS_VISUAL_IDENTIFIER_COLOR=.*
+            value: "  typeset -g POWERLEVEL9K_VCS_VISUAL_IDENTIFIER_COLOR=129"
+          - regex: "local      clean='%76F'   # green foreground"
+            value: "local      clean='%129F'   # purple foreground"
+          - regex: '(( $#branch > 32 )) && branch[13,-13]="…"  # <-- this line'
+            value: '# (( $#branch > 32 )) && branch[13,-13]="…"  # <-- this line'
+          - regex: typeset -g POWERLEVEL9K_VCS_UNTRACKED_ICON=.*
+            value: "  typeset -g POWERLEVEL9K_VCS_UNTRACKED_ICON='\uf128'"
+
+    - name: Update p10k theme
+      ansible.builtin.lineinfile:
+        regexp: "{{ item.regex }}"
+        path: ~/.p10k.zsh
+        line: "{{ item.value }}"
+      loop: "{{ p10k_updates }}"
+
+    # TODO: Setup vscode settings
+    # TODO: Update p10k with kubectl
+    # TODO: Update p10k github colors to purple
