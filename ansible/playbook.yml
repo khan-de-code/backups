@@ -229,6 +229,10 @@
               alias ll='ls --header --long --group --all --icons'
               alias tree='eza --tree --long --icons'
 
+              alias rg="rg --hidden --glob '!.git'"
+
+              alias fd="fd --hidden"
+
         - name: Update .zshrc
           ansible.builtin.blockinfile:
             path: ~/.zshrc
