@@ -679,6 +679,12 @@
                   other: true
                   strings: true
                 editor.tabSize: 2
+                editor.defaultFormatter: esbenp.prettier-vscode
+              "[git-commit]":
+                editor.rulers:
+                  - 100
+                editor.insertSpaces: true
+                editor.tabSize: 2
               "[jsonc]":
                 editor.defaultFormatter: esbenp.prettier-vscode
               "[python]":
@@ -712,6 +718,61 @@
                 editorInlayHint.typeForeground: "#44c96188"
               workbench.colorTheme: Darcula Theme from IntelliJ
               workbench.iconTheme: icons
+              "[json]":
+                editor.defaultFormatter: esbenp.prettier-vscode
+              editor.tokenColorCustomizations:
+                textMateRules:
+                  - scope:
+                      - storage.type.function.python
+                      - storage.type.class.python
+                      - variable.language.special.self.python
+                      - string.quoted.docstring.multi.python
+                      - keyword.control.import.python
+                    settings:
+                      fontStyle: italic
+                  - scope:
+                      - variable.language.special.self.python
+                      - variable.parameter.function-call.python
+                      - entity.other.inherited-class.python
+                      - keyword.control.flow.python
+                    settings:
+                      foreground: '#8EC07C'
+                  - scope:
+                      - variable.parameter.function.language.python
+                    settings:
+                      foreground: '#ff3a3ab3'
+                  - scope:
+                      - source.python
+                    settings:
+                      foreground: '#ff3a3ab3'
+                  - scope:
+                      - meta.function-call.generic.python
+                    settings:
+                      foreground: '#409f57'
+                  - scope:
+                      - keyword.operator.logical.python
+                      - keyword.control.flow.python
+                    settings:
+                      foreground: '#9c48a8'
+                  - scope:
+                      - keyword.control.import.python
+                    settings:
+                      foreground: '#6e6e6e'
+                  - scope:
+                      - constant.language.python
+                    settings:
+                      foreground: '#9c48a8'
+                  - scope:
+                      - entity.name.function.python
+                    settings:
+                      foreground: '#7FBA00'
+                  - scope: invalid.deprecated.line-too-long.git-commit
+                    settings:
+                      foreground: '#FFA500'
+                  - scope: invalid.illegal.line-too-long.git-commit
+                    settings:
+                      foreground: '#FF0000'
+
 
         - name: Update vscode Settings
           ansible.builtin.set_fact:
