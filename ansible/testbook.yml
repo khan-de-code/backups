@@ -1,0 +1,65 @@
+---
+- name: My first play
+  hosts: myhosts
+  tasks:
+    - name: Read vscode Settings File
+      ansible.builtin.include_vars:
+        file: ~/.config/Code/User/settings.json
+        name: vscode_settings
+
+    - name: Insert/Update New Settings
+      ansible.builtin.set_fact:
+        vscode_values:
+          '[ansible]':
+            editor.autoIndent: advanced
+            editor.detectIndentation: true
+            editor.insertSpaces: true
+            editor.quickSuggestions:
+              comments: true
+              other: true
+              strings: true
+            editor.tabSize: 2
+          '[jsonc]':
+            editor.defaultFormatter: esbenp.prettier-vscode
+          '[python]':
+            editor.rulers:
+              - 100
+          '[yaml]':
+            diffEditor.ignoreTrimWhitespace: false
+            editor.autoIndent: keep
+            editor.insertSpaces: true
+            editor.quickSuggestions:
+              comments: false
+              other: true
+              strings: true
+            editor.tabSize: 2
+          editor.bracketPairColorization.enabled: true
+          editor.fontFamily: Dank Mono
+          editor.fontLigatures: true
+          editor.guides.bracketPairs: active
+          editor.inlayHints.fontFamily: '''Dank Mono'''
+          files.autoSave: afterDelay
+          python.analysis.inlayHints.functionReturnTypes: true
+          python.analysis.inlayHints.variableTypes: true
+          python.languageServer: Pylance
+          terminal.integrated.fontFamily: '''Hack Nerd Font Mono'''
+          workbench.colorCustomizations:
+            editorInlayHint.background: '#00001CCC'
+            editorInlayHint.foreground: '#44c96188'
+            editorInlayHint.parameterBackground: '#00001CCC'
+            editorInlayHint.parameterForeground: '#44c96188'
+            editorInlayHint.typeBackground: '#08000088'
+            editorInlayHint.typeForeground: '#44c96188'
+          workbench.colorTheme: Darcula Theme from IntelliJ
+          workbench.iconTheme: icons
+
+
+    - name: Update vscode Settings
+      ansible.builtin.set_fact:
+        vscode_settings: "{{ vscode_settings | default([]) | combine(vscode_values, recursive=true) }}"
+
+    - name: Write vscode Settings to File
+      ansible.builtin.copy:
+        content: "{{ vscode_settings | to_nice_json }}"
+        dest: ~/.config/Code/User/settings.json
+        mode: preserve

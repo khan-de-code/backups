@@ -224,10 +224,10 @@
             alias_marker_begin: "# -------------- Begin Alias ---------------"
             alias_marker_end: "# -------------- End Alias ---------------"
             alias_block: |-
-              alias ls=' eza --group-directories-first'
-              alias la=' ls -a'
-              alias ll=' ls --header --long --group --all --icons'
-              alias tree=' eza --tree --long --icons'
+              alias ls='eza --group-directories-first'
+              alias la='ls -a'
+              alias ll='ls --header --long --group --all --icons'
+              alias tree='eza --tree --long --icons'
 
         - name: Update .zshrc
           ansible.builtin.blockinfile:
@@ -453,17 +453,39 @@
           ansible.builtin.shell: |-
             pyenv global {{ latest_python_version.stdout }}
 
-    - name: Ensure poetry on is Installed on Global Python
+    - name: Ensure poetry is Installed on Global Python
       ansible.builtin.pip:
         name: poetry
         state: present
+
+    - name: Ensure direnv is Installed
+      block:
+        - name: Ensure direnv is Installed
+          community.general.homebrew:
+            name: direnv
+            state: present
+
+        - name: Update EVAL Facts with direnv
+          ansible.builtin.set_fact:
+            eval_block: |-
+              {{ eval_block }}
+              eval "$(direnv hook zsh)"
+
+        - name: Update .zhsrc
+          ansible.builtin.blockinfile:
+            path: ~/.zshrc
+            marker: "{mark}"
+            marker_begin: "{{ eval_marker_begin }}"
+            marker_end: "{{ eval_marker_end }}"
+            block: |-
+              {{ eval_block }}
 
     - name: Update .zshrc With Plugins
       ansible.builtin.lineinfile:
         dest: ~/.zshrc
         regexp: ^plugins=(.*)
         line: >-
-          plugins=(git alias-finder aliases autojump aws bgnotify colored-man-pages docker dotenv fd fzf kubectl nvm pip poetry pyenv
+          plugins=(git alias-finder aliases autojump aws bgnotify colored-man-pages docker direnv fd fzf kubectl nvm pip poetry pyenv
           ripgrep rust taskwarrior zsh-autosuggestions zsh-syntax-highlighting)
 
     - name: Update .zshrc With Makefile Autocomplete
@@ -523,10 +545,9 @@
 
     - name: Ensure just is Installed
       become: true
-      ansible.builtin.apt:
+      community.general.homebrew:
         name: just
         state: present
-        update_cache: true
 
     - name: Ensure tldr is Installed
       community.general.homebrew:
@@ -537,6 +558,17 @@
       community.general.homebrew:
         name: git
         state: present
+
+    - name: Ensure ksnip is Installed
+      community.general.flatpak:
+        name: org.ksnip.ksnip
+        state: present
+
+    - name: Ensure gnome-tweaks is Installed
+      ansible.builtin.apt:
+        name: gnome-tweaks
+        state: present
+        update_cache: true
 
     - name: Ensure vscode is Installed
       become: true
@@ -558,7 +590,7 @@
               - eamodio.gitlens
               - esbenp.prettier-vscode
               - formulahendry.auto-close-tag
-              - aaron-bond.better-comments
+              - edwinhuish.better-comments-next
               - alefragnani.Bookmarks
               - streetsidesoftware.code-spell-checker
               - usernamehw.errorlens
@@ -566,6 +598,9 @@
               - kevinrose.vsc-python-indent
               - Gruntfuggly.todo-tree
               - rokoroku.vscode-theme-darcula
+              - skellock.just
+              - sanchitverma.block-comments
+              - tamasfe.even-better-toml
 
         - name: Install vscode Extensions
           ansible.builtin.shell: code --install-extension {{ item }} --force
@@ -580,22 +615,55 @@
             file: ~/.config/Code/User/settings.json
             name: vscode_settings
 
+        - name: Insert/Update New Settings
+          ansible.builtin.set_fact:
+            vscode_values:
+              "[ansible]":
+                editor.autoIndent: advanced
+                editor.detectIndentation: true
+                editor.insertSpaces: true
+                editor.quickSuggestions:
+                  comments: true
+                  other: true
+                  strings: true
+                editor.tabSize: 2
+              "[jsonc]":
+                editor.defaultFormatter: esbenp.prettier-vscode
+              "[python]":
+                editor.rulers:
+                  - 100
+              "[yaml]":
+                diffEditor.ignoreTrimWhitespace: false
+                editor.autoIndent: keep
+                editor.insertSpaces: true
+                editor.quickSuggestions:
+                  comments: false
+                  other: true
+                  strings: true
+                editor.tabSize: 2
+              editor.bracketPairColorization.enabled: true
+              editor.fontFamily: Dank Mono
+              editor.fontLigatures: true
+              editor.guides.bracketPairs: active
+              editor.inlayHints.fontFamily: "'Dank Mono'"
+              files.autoSave: afterDelay
+              python.analysis.inlayHints.functionReturnTypes: true
+              python.analysis.inlayHints.variableTypes: true
+              python.languageServer: Pylance
+              terminal.integrated.fontFamily: "'Hack Nerd Font Mono'"
+              workbench.colorCustomizations:
+                editorInlayHint.background: "#00001CCC"
+                editorInlayHint.foreground: "#44c96188"
+                editorInlayHint.parameterBackground: "#00001CCC"
+                editorInlayHint.parameterForeground: "#44c96188"
+                editorInlayHint.typeBackground: "#08000088"
+                editorInlayHint.typeForeground: "#44c96188"
+              workbench.colorTheme: Darcula Theme from IntelliJ
+              workbench.iconTheme: icons
+
         - name: Update vscode Settings
           ansible.builtin.set_fact:
-            vscode_settings: >-
-              {{
-              vscode_settings | default([]) |
-              combine({
-              'editor.fontFamily': 'Dank Mono',
-              'editor.fontLigatures': true,
-              'editor.bracketPairColorization.enabled': true,
-              'editor.guides.bracketPairs':'active',
-              "files.autoSave": "afterDelay",
-              "[python]": {
-                  "editor.rulers": [100]
-              },
-              })
-              }}
+            vscode_settings: "{{ vscode_settings | default([]) | combine(vscode_values, recursive=true) }}"
 
         - name: Write vscode Settings to File
           ansible.builtin.copy:
@@ -702,6 +770,7 @@
       ansible.builtin.shell: |-
         git config --global user.email "{{ github_email_address }}"
         git config --global user.name "Dawson Batz"
+        git config --global core.editor "code --wait --new-window"
 
     - name: Vscode Extensions to Install
       ansible.builtin.set_fact:
@@ -738,4 +807,3 @@
 
     # TODO: Setup vscode settings
     # TODO: Update p10k with kubectl
-    # TODO: Update p10k github colors to purple
