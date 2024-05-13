@@ -229,9 +229,54 @@
               alias ll='ls --header --long --group --all --icons'
               alias tree='eza --tree --long --icons'
 
-              alias rg="rg --hidden --glob '!.git'"
+              # alias rg="rg --hidden --glob '!.git'"
+              alias rg="kitty +kitten hyperlinked_grep --hidden --glob '!.git'"
 
               alias fd="fd --hidden"
+
+              function gsw () {
+                  git fetch --all;
+
+                  if [[ $1 == "main" ]]; then
+                      git switch main;
+                      return 0;
+                  fi
+
+                  if [[ $# -eq 1 ]]; then
+                      git switch "$(git branch --all | fzf --query $1 | tr -d '[:space:]' | sed 's/remotes\/origin\///')";
+                  fi
+                  
+                  if [[ $# -eq 0 || $# -gt 1 ]]; then
+                      git switch "$(git branch --all | fzf | tr -d '[:space:]')";
+                  fi
+              }
+
+              function gp () {
+                  if [ $# -eq 0 ]; then
+                      git push 2>&1 | colout 'remote:' yellow | colout 'GitHub found.*' red bold | colout 'https://.*security.*' red bold;
+                  else
+                      git push "$@" 2>&1 | colout 'remote:' yellow | colout 'GitHub found.*' red bold | colout 'https://.*security.*' red bold;
+                  fi
+                  
+                  printf "\n\n";
+                  printf "https://github.com/picarro/$(basename "$(git rev-parse --show-toplevel)")/pull/new/$(git rev-parse --abbrev-ref HEAD)\n";
+              }
+
+              function grb () {
+                  if [ $# -eq 0 ]; then
+                      git rebase;
+                  elif [ $1 = "branch" ] || [ $1 = "main" ]; then
+                      git rebase -i $(git rev-parse main)
+                  else
+                      git rebase "$@";
+                  fi
+              }
+
+              alias gsw='gsw'
+
+              alias gp='gp'
+
+              alias grb='grb'
 
         - name: Update .zshrc
           ansible.builtin.blockinfile:
@@ -367,6 +412,9 @@
             env_marker_end: "# -------------- End Environment Variables ---------------"
             env_block: |-
               export PYENV_ROOT="$HOME/.pyenv"
+
+              export FZF_DEFAULT_OPTS='--height 40% --layout=reverse --border'
+              export DOCKER_BUILDKIT=1
 
         - name: Update .zshrc
           ansible.builtin.blockinfile:
@@ -752,7 +800,10 @@
 
               bell_on_tab             󰂟
               tab_bar_edge            top
+              tab_bar_style powerline
+              tab_powerline_style angled
               tab_title_template      {index}: {title}
+              active_tab_background #008000
               focus_follows_mouse     yes
               active_tab_foreground   #000
               active_tab_background   #73D216
@@ -766,9 +817,21 @@
               visual_bell_color     #FF0000
               window_alert_on_bell  yes
 
-              copy_on_select  yes
-              map ctrl+c      copy_and_clear_or_interrupt
-              map ctrl+v      paste_from_clipboard
+              copy_on_select yes
+              strip_trailing_spaces smart
+              map ctrl+c copy_and_clear_or_interrupt
+              map ctrl+v paste_from_clipboard
+
+              # Window Dimensions
+              remember_window_size  yes
+              initial_window_width  640
+              initial_window_height 400
+
+              # https://github.com/kovidgoyal/kitty/issues/2766#issuecomment-644561577
+              # map kitty_mod+p>v kitten hints --type linenum code -g {path}:{line}:0
+              map kitty_mod+p>v kitten hints --type=path --program "/usr/bin/code -g"
+
+              editor "/usr/bin/code"
 
     - name: Configure git
       ansible.builtin.shell: |-
