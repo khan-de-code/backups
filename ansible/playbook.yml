@@ -653,6 +653,7 @@
               - skellock.just
               - sanchitverma.block-comments
               - tamasfe.even-better-toml
+              - njpwerner.autodocstring
 
         - name: Install vscode Extensions
           ansible.builtin.shell: code --install-extension {{ item }} --force
