@@ -537,8 +537,8 @@
         dest: ~/.zshrc
         regexp: ^plugins=(.*)
         line: >-
-          plugins=(git alias-finder aliases autojump aws bgnotify colored-man-pages docker direnv fd fzf kubectl nvm pip poetry pyenv
-          ripgrep rust taskwarrior zsh-autosuggestions zsh-syntax-highlighting)
+          plugins=(git alias-finder aliases autojump aws bgnotify colored-man-pages docker direnv fzf kubectl nvm pip poetry pyenv
+          rust taskwarrior zsh-autosuggestions zsh-syntax-highlighting)
 
     - name: Update .zshrc With Makefile Autocomplete
       ansible.builtin.blockinfile:
@@ -634,26 +634,27 @@
         - name: Vscode Extensions to Install
           ansible.builtin.set_fact:
             vscode_extensions:
-              - redhat.ansible
-              - redhat.vscode-yaml
-              - ms-python.python
-              - ms-python.vscode-pylance
-              - ms-azuretools.vscode-docker
+              - alefragnani.Bookmarks
               - eamodio.gitlens
+              - edwinhuish.better-comments-next
               - esbenp.prettier-vscode
               - formulahendry.auto-close-tag
-              - edwinhuish.better-comments-next
-              - alefragnani.Bookmarks
-              - streetsidesoftware.code-spell-checker
-              - usernamehw.errorlens
-              - tal7aouy.icons
-              - kevinrose.vsc-python-indent
               - Gruntfuggly.todo-tree
-              - rokoroku.vscode-theme-darcula
-              - skellock.just
-              - sanchitverma.block-comments
-              - tamasfe.even-better-toml
+              - kevinrose.vsc-python-indent
+              - ms-azuretools.vscode-docker
+              - ms-python.flake8
+              - ms-python.python
+              - ms-python.vscode-pylance
               - njpwerner.autodocstring
+              - redhat.ansible
+              - redhat.vscode-yaml
+              - rokoroku.vscode-theme-darcula
+              - sanchitverma.block-comments
+              - skellock.just
+              - streetsidesoftware.code-spell-checker
+              - tal7aouy.icons
+              - tamasfe.even-better-toml
+              - usernamehw.errorlens
 
         - name: Install vscode Extensions
           ansible.builtin.shell: code --install-extension {{ item }} --force
@@ -737,43 +738,42 @@
                       - entity.other.inherited-class.python
                       - keyword.control.flow.python
                     settings:
-                      foreground: '#8EC07C'
+                      foreground: "#8EC07C"
                   - scope:
                       - variable.parameter.function.language.python
                     settings:
-                      foreground: '#ff3a3ab3'
+                      foreground: "#ff3a3ab3"
                   - scope:
                       - source.python
                     settings:
-                      foreground: '#ff3a3ab3'
+                      foreground: "#ff3a3ab3"
                   - scope:
                       - meta.function-call.generic.python
                     settings:
-                      foreground: '#409f57'
+                      foreground: "#409f57"
                   - scope:
                       - keyword.operator.logical.python
                       - keyword.control.flow.python
                     settings:
-                      foreground: '#9c48a8'
+                      foreground: "#9c48a8"
                   - scope:
                       - keyword.control.import.python
                     settings:
-                      foreground: '#6e6e6e'
+                      foreground: "#6e6e6e"
                   - scope:
                       - constant.language.python
                     settings:
-                      foreground: '#9c48a8'
+                      foreground: "#9c48a8"
                   - scope:
                       - entity.name.function.python
                     settings:
-                      foreground: '#7FBA00'
+                      foreground: "#7FBA00"
                   - scope: invalid.deprecated.line-too-long.git-commit
                     settings:
-                      foreground: '#FFA500'
+                      foreground: "#FFA500"
                   - scope: invalid.illegal.line-too-long.git-commit
                     settings:
-                      foreground: '#FF0000'
-
+                      foreground: "#FF0000"
 
         - name: Update vscode Settings
           ansible.builtin.set_fact:
@@ -902,7 +902,7 @@
         git config --global core.editor "code --wait --new-window"
         git config --global push.autoSetupRemote true
 
-    - name: Vscode Extensions to Install
+    - name: PowerLevel10k Modifications
       ansible.builtin.set_fact:
         p10k_updates:
           - regex: typeset -g POWERLEVEL9K_DIR_FOREGROUND=.*
