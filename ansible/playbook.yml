@@ -718,6 +718,8 @@
                 editorInlayHint.parameterForeground: "#44c96188"
                 editorInlayHint.typeBackground: "#08000088"
                 editorInlayHint.typeForeground: "#44c96188"
+                editorWarning.foreground: "#c56804"
+                list.warningForeground: "#c56804"
               workbench.colorTheme: Darcula Theme from IntelliJ
               workbench.iconTheme: icons
               "[json]":
