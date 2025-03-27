@@ -39,6 +39,17 @@
       ignore_errors: true
       changed_when: false
 
+    - name: Install Homebrew
+      when: homebrew_exists is failed
+      ansible.builtin.shell: |-
+        /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+
+    - name: Check if Homebrew is Installed
+      ansible.builtin.shell: "command -v brew"
+      register: homebrew_exists
+      ignore_errors: true
+      changed_when: false
+
     - name: Homebrew Check Failed
       when: homebrew_exists is failed
       ansible.builtin.debug:
@@ -278,6 +289,8 @@
 
               alias grb='grb'
 
+              alias clear='printf "\033c"'
+
         - name: Update .zshrc
           ansible.builtin.blockinfile:
             path: ~/.zshrc
@@ -506,7 +519,7 @@
             pyenv global {{ latest_python_version.stdout }}
 
     - name: Ensure poetry is Installed on Global Python
-      ansible.builtin.pip:
+      community.general.homebrew:
         name: poetry
         state: present
 
@@ -596,7 +609,6 @@
             line: ZSH_THEME="powerlevel10k/powerlevel10k"
 
     - name: Ensure just is Installed
-      become: true
       community.general.homebrew:
         name: just
         state: present
@@ -611,12 +623,19 @@
         name: git
         state: present
 
-    - name: Ensure ksnip is Installed
-      community.general.flatpak:
-        name: org.ksnip.ksnip
+    - name: Ensure flatpak is Installed
+      become: true
+      ansible.builtin.apt:
+        name: flatpak
         state: present
+        update_cache: true
+
+    - name: Download ksnip
+      ansible.builtin.pause:
+        prompt: Before continuing execution, download and ksnip 
 
     - name: Ensure gnome-tweaks is Installed
+      become: true
       ansible.builtin.apt:
         name: gnome-tweaks
         state: present
@@ -792,7 +811,7 @@
         unzip -o /tmp/Hack.zip -d /tmp/hack_nerd_font
         cp /tmp/hack_nerd_font/*.ttf ~/.local/share/fonts
 
-    - name: Chekc if kitty is installed
+    - name: Check if kitty is installed
       ansible.builtin.shell: command -v kitty
       register: kitty_installed
       ignore_errors: true

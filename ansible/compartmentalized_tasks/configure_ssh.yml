@@ -1,0 +1,76 @@
+- pause:
+    prompt: "What would you like the Github SSH file to be named?"
+    echo: true
+  register: result
+
+- set_fact:
+    ssh_file_name: "{{ result.user_input }}"
+
+- pause:
+    prompt: "What is the Github email address for generating an SSH key?"
+    echo: true
+  register: result
+
+- set_fact:
+    github_email_address: "{{ result.user_input }}"
+
+- pause:
+    prompt: "Enter the password you want to use for the Github SSH openssh_key:"
+    echo: false
+  register: result
+
+- set_fact:
+    github_ssh_password: "{{ result.user_input }}"
+
+- name: Create .ssh Directory if it Doesn't Exist
+  ansible.builtin.file:
+    path: ~/.ssh
+    state: directory
+    mode: u=rwx,g=,o=
+
+- name: Check if Github SSH File Exists
+  ansible.builtin.stat:
+    path: ~/.ssh/{{ ssh_file_name }}
+  register: github_ssh_file
+
+- name: Generate Github SSH Key
+  when: not github_ssh_file.stat.exists
+  community.crypto.openssh_keypair:
+    path: ~/.ssh/{{ ssh_file_name }}
+    type: ed25519
+    state: present
+    comment: "{{ github_email_address }}"
+    force: false
+    passphrase: "{{ github_ssh_password }}"
+
+- name: Evaluating the authentication agent & adding the key...
+  when: not github_ssh_file.stat.exists
+  ansible.builtin.shell: |-
+    eval "$(ssh-agent)"
+    ssh-add ~/.ssh/{{ ssh_file_name }}
+
+- name: Create config File If It Does Not Exist
+  ansible.builtin.file:
+    path: ~/.ssh/config
+    state: touch
+    mode: u=rwx,g=,o=
+
+- name: Check if config File Already Contains Work SSH Entry
+  ansible.builtin.lineinfile:
+    state: absent
+    path: ~/.ssh/config
+    regexp: ^Host work.github.com$
+  check_mode: true
+  changed_when: false
+  register: check_config_file
+
+- name: Update config File With SSH Info for Github
+  when: not check_config_file.found
+  ansible.builtin.lineinfile:
+    path: ~/.ssh/config
+    line: |
+      Host work.github.com
+          HostName github.com
+          User git
+          IdentityFile ~/.ssh/{{ ssh_file_name }}
+          IdentitiesOnly yes

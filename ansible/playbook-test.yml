@@ -1,0 +1,31 @@
+---
+- name: Configure Localhost
+  hosts: myhosts
+
+  pre_tasks:
+    - name: Update, Upgrade, and Remove apt Packages
+      become: true
+      ansible.builtin.apt:
+        upgrade: true
+        update_cache: true
+        cache_valid_time: 86400 # One Day
+        autoremove: true
+
+    - name: Ensure build-essential Is Installed
+      become: true
+      ansible.builtin.apt:
+        name: build-essential
+        state: present
+        update_cache: true
+
+  tasks:
+    - ansible.builtin.debug:
+        msg: task1
+
+    - name: Configure SSH
+      ansible.builtin.import_tasks:
+        file: compartmentalized_tasks/configure_ssh.yml
+
+    - name: Configure Shell
+      ansible.builtin.import_tasks:
+        file: compartmentalized_tasks/configure_shell.yml
