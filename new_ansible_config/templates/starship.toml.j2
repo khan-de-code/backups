@@ -1,0 +1,71 @@
+format = "$os$directory$git_branch$fill$sudo$cmd_duration$dart$nodejs$python$battery$time$line_break$character"
+
+add_newline = true
+
+[os]
+disabled = false
+symbols = { Macos = "" } 
+
+[directory]
+format = " [$path]($style) "
+style = "cyan"
+truncation_length = 2
+truncate_to_repo = false
+truncation_symbol = "…/"
+
+[git_branch]
+format = ":: [$branch]($style)[$ahead_behind]($style) "
+style = "#F1502F"
+truncation_length = 15
+truncation_symbol = "…"
+
+[git_status]
+format = "[$all_status$ahead_behind]($style) "
+style = "#F1502F"
+staged = " 󰐕 $count"
+modified = " 󰏫 $count"
+
+[fill]
+symbol = " "
+
+[sudo]
+format = "| root "
+style = "red"
+disabled = false
+
+[cmd_duration]
+min_time = 2000
+format = "| 󰔛 [$duration]($style) "
+style = "yellow"
+
+[dart]
+format = "| 󰆥 [$version]($style) "
+style = "#06A4CE"
+
+[nodejs]
+format = "| 󰎙 [$version]($style) "
+style = "#6CA35E"
+
+[python]
+format = "| 󰌠 [$virtualenv]($style) "
+style = "#4584b6"
+
+[battery]
+format = "| 󰁹 [$percentage]($style) "
+[[battery.display]]
+threshold = 100
+style = "#4caf50"
+
+[time]
+format = "| [$time]($style) "
+style = "green"
+disabled = false
+
+[status]
+format = "[$symbol]($style)"
+symbol = "➜"
+disabled = false
+
+[character]
+success_symbol = "[➜](green)"
+error_symbol = "[➜](red)"

@@ -1,0 +1,490 @@
+---
+- name: Development Environment Setup
+  hosts: local
+  vars_prompt:
+    - name: github_email
+      prompt: "GitHub email address"
+      private: false
+    - name: github_username
+      prompt: "GitHub username"
+      private: false
+    - name: ssh_key_name
+      prompt: "SSH key filename (default: id_ed25519)"
+      default: "id_ed25519"
+      private: false
+    - name: ssh_passphrase
+      prompt: "SSH key passphrase (optional)"
+      private: true
+      confirm: true
+
+  vars:
+    is_macos: "{{ ansible_os_family == 'Darwin' }}"
+    is_linux: "{{ ansible_os_family == 'Debian' or ansible_os_family == 'RedHat' }}"
+    homebrew_prefix: "{{ '/opt/homebrew' if ansible_architecture == 'arm64' else '/usr/local' }}"
+    seconds_in_day: 86400
+    backup_timestamp: "{{ ansible_date_time.epoch }}"
+    backup_dir: "~/.config/ansible-setup-backups/{{ backup_timestamp }}"
+    
+  tasks:
+    # Create backup directory
+    - name: Create backup directory
+      ansible.builtin.file:
+        path: "{{ backup_dir }}"
+        state: directory
+        mode: 'u=rwx,g=,o='
+
+    - name: Backup existing configurations
+      ansible.builtin.copy:
+        src: "{{ item.src }}"
+        dest: "{{ backup_dir }}/{{ item.dest }}"
+        remote_src: true
+        mode: 'u=rw,g=,o='
+      loop:
+        - { src: "~/.zshrc", dest: "zshrc" }
+        - { src: "~/.gitconfig", dest: "gitconfig" }
+        - { src: "~/.ssh/config", dest: "ssh_config" }
+        - { src: "~/.ripgreprc", dest: "ripgreprc" }
+      ignore_errors: true
+
+    - name: Create rollback script
+      ansible.builtin.copy:
+        dest: "{{ backup_dir }}/rollback.sh"
+        mode: 'u=rwx,g=,o='
+        content: |
+          #!/bin/bash
+          echo "Rolling back configuration from {{ backup_timestamp }}..."
+          
+          # Restore files
+          [ -f "{{ backup_dir }}/zshrc" ] && cp "{{ backup_dir }}/zshrc" ~/.zshrc
+          [ -f "{{ backup_dir }}/gitconfig" ] && cp "{{ backup_dir }}/gitconfig" ~/.gitconfig
+          [ -f "{{ backup_dir }}/ssh_config" ] && cp "{{ backup_dir }}/ssh_config" ~/.ssh/config
+          [ -f "{{ backup_dir }}/ripgreprc" ] && cp "{{ backup_dir }}/ripgreprc" ~/.ripgreprc
+          
+          echo "Rollback complete. Restart your terminal."
+          echo "To remove this backup: rm -rf {{ backup_dir }}"
+
+    # System Updates
+    - name: Update package cache (Linux)
+      become: true
+      ansible.builtin.apt:
+        update_cache: true
+        cache_valid_time: 3600
+      when: is_linux and ansible_pkg_mgr == 'apt'
+
+    - name: Install essential packages (Linux)
+      become: true
+      ansible.builtin.apt:
+        name:
+          - build-essential
+          - curl
+          - git
+          - zsh
+          - ca-certificates
+        state: present
+      when: is_linux and ansible_pkg_mgr == 'apt'
+
+    # Homebrew Installation
+    - name: Check if Homebrew is installed
+      ansible.builtin.stat:
+        path: "{{ homebrew_prefix }}/bin/brew"
+      register: homebrew_check
+
+    - name: Install Homebrew
+      ansible.builtin.shell: |
+        /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+      when: not homebrew_check.stat.exists
+
+    # SSH Configuration
+    - name: Create .ssh directory
+      ansible.builtin.file:
+        path: ~/.ssh
+        state: directory
+        mode: 'u=rwx,g=,o='
+
+    - name: Generate SSH key
+      community.crypto.openssh_keypair:
+        path: "~/.ssh/{{ ssh_key_name }}"
+        type: ed25519
+        comment: "{{ github_email }}"
+        passphrase: "{{ ssh_passphrase | default(omit) }}"
+        force: false
+        mode: 'u=rw,g=,o='
+
+    - name: Set SSH public key permissions
+      ansible.builtin.file:
+        path: "~/.ssh/{{ ssh_key_name }}.pub"
+        mode: 'u=rw,g=r,o=r'
+
+    - name: Configure SSH for GitHub
+      ansible.builtin.blockinfile:
+        path: ~/.ssh/config
+        create: true
+        mode: 'u=rw,g=,o='
+        block: |
+          Host github.com
+              HostName github.com
+              User git
+              IdentityFile ~/.ssh/{{ ssh_key_name }}
+              IdentitiesOnly yes
+
+    # Shell Configuration
+    - name: Set zsh as default shell (Linux)
+      become: true
+      ansible.builtin.user:
+        name: "{{ ansible_user_id }}"
+        shell: /bin/zsh
+      when: is_linux
+
+    - name: Set zsh as default shell (macOS)
+      ansible.builtin.shell: |
+        chsh -s /bin/zsh
+      when: is_macos
+
+    # Development Tools via Homebrew
+    - name: Update Homebrew
+      community.general.homebrew:
+        update_homebrew: true
+
+    - name: Install development tools (async)
+      community.general.homebrew:
+        name: "{{ item }}"
+        state: present
+      loop:
+        - bat
+        - eza
+        - fd
+        - fzf
+        - ripgrep
+        - git
+        - direnv
+        - zoxide
+        - starship
+        - just
+        - tldr
+        - kubectl
+        - pyenv
+        - poetry
+        - nvm
+        - go
+        - uv
+        - jq
+        - btop
+        - difftastic
+        - gum
+        - dust
+        - ctop
+        - glow
+        - superfile
+      async: 300
+      poll: 0
+      register: homebrew_jobs
+
+    # Install Zsh plugins
+    - name: Install zsh-syntax-highlighting (macOS)
+      community.general.homebrew:
+        name: zsh-syntax-highlighting
+        state: present
+      when: is_macos
+
+    - name: Install zsh-autosuggestions (macOS)
+      community.general.homebrew:
+        name: zsh-autosuggestions
+        state: present
+      when: is_macos
+
+    - name: Install zsh plugins (Linux)
+      become: true
+      ansible.builtin.apt:
+        name:
+          - zsh-syntax-highlighting
+          - zsh-autosuggestions
+        state: present
+      when: is_linux and ansible_pkg_mgr == 'apt'
+
+    # Rust Installation
+    - name: Check if Rust is installed
+      ansible.builtin.shell: command -v cargo
+      register: rust_check
+      ignore_errors: true
+      changed_when: false
+
+    - name: Install Rust (async)
+      ansible.builtin.shell: |
+        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+      when: rust_check.rc != 0
+      async: 300
+      poll: 0
+      register: rust_job
+
+    # Docker Installation (Linux only)
+    - name: Install Docker (Linux)
+      when: is_linux
+      block:
+        - name: Add Docker GPG key
+          become: true
+          ansible.builtin.apt_key:
+            url: https://download.docker.com/linux/ubuntu/gpg
+            state: present
+
+        - name: Add Docker repository
+          become: true
+          ansible.builtin.apt_repository:
+            repo: "deb [arch=amd64] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+            state: present
+
+        - name: Install Docker
+          become: true
+          ansible.builtin.apt:
+            name:
+              - docker-ce
+              - docker-ce-cli
+              - containerd.io
+              - docker-buildx-plugin
+              - docker-compose-plugin
+            state: present
+            update_cache: true
+
+        - name: Add user to docker group
+          become: true
+          ansible.builtin.user:
+            name: "{{ ansible_user_id }}"
+            groups: docker
+            append: true
+
+    # Wait for async installations to complete
+    - name: Wait for Homebrew installations
+      async_status:
+        jid: "{{ item.ansible_job_id }}"
+      loop: "{{ homebrew_jobs.results }}"
+      register: homebrew_result
+      until: homebrew_result.finished
+      retries: 60
+      delay: 5
+      when: homebrew_jobs is defined
+
+    - name: Wait for Rust installation
+      async_status:
+        jid: "{{ rust_job.ansible_job_id }}"
+      register: rust_result
+      until: rust_result.finished
+      retries: 60
+      delay: 5
+      when: rust_job is defined and rust_job.ansible_job_id is defined
+      failed_when: rust_result.rc != 0
+
+    # Zsh Configuration
+    - name: Backup existing .zshrc
+      ansible.builtin.copy:
+        src: ~/.zshrc
+        dest: ~/.zshrc.backup.{{ ansible_date_time.epoch }}
+        remote_src: true
+      ignore_errors: true
+
+    - name: Create .zshrc
+      ansible.builtin.template:
+        src: zshrc.j2
+        dest: ~/.zshrc
+        backup: false
+        mode: 'u=rw,g=r,o=r'
+
+    - name: Create .config directory
+      ansible.builtin.file:
+        path: ~/.config
+        state: directory
+        mode: 'u=rwx,g=rx,o=rx'
+
+    - name: Create starship config
+      ansible.builtin.template:
+        src: starship.toml.j2
+        dest: ~/.config/starship.toml
+        backup: false
+        mode: 'u=rw,g=r,o=r'
+
+    # Nerd Font Installation
+    - name: Check if Hack Nerd Font is installed
+      ansible.builtin.shell: |
+        {% if is_macos %}
+        ls ~/Library/Fonts/ | grep -i hack || ls /System/Library/Fonts/ | grep -i hack
+        {% else %}
+        ls ~/.local/share/fonts/ | grep -i hack
+        {% endif %}
+      register: nerd_font_check
+      ignore_errors: true
+      changed_when: false
+
+    - name: Install Hack Nerd Font
+      when: nerd_font_check.rc != 0
+      block:
+        - name: Download Hack Nerd Font
+          ansible.builtin.get_url:
+            url: https://github.com/ryanoasis/nerd-fonts/releases/download/v3.2.1/Hack.zip
+            dest: /tmp/Hack.zip
+            mode: 'u=rw,g=r,o=r'
+
+        - name: Extract Hack Nerd Font
+          ansible.builtin.unarchive:
+            src: /tmp/Hack.zip
+            dest: /tmp/hack_nerd_font
+            creates: /tmp/hack_nerd_font
+            remote_src: true
+
+        - name: Install font files (macOS)
+          ansible.builtin.copy:
+            src: "{{ item }}"
+            dest: ~/Library/Fonts/
+            remote_src: true
+          with_fileglob:
+            - /tmp/hack_nerd_font/*.ttf
+          when: is_macos
+
+        - name: Create fonts directory (Linux)
+          ansible.builtin.file:
+            path: ~/.local/share/fonts
+            state: directory
+            mode: 'u=rwx,g=rx,o=rx'
+          when: is_linux
+
+        - name: Install font files (Linux)
+          ansible.builtin.copy:
+            src: "{{ item }}"
+            dest: ~/.local/share/fonts/
+            remote_src: true
+          with_fileglob:
+            - /tmp/hack_nerd_font/*.ttf
+          when: is_linux
+
+        - name: Update font cache (Linux)
+          ansible.builtin.shell: fc-cache -fv
+          when: is_linux
+
+        - name: Clean up font files
+          ansible.builtin.file:
+            path: "{{ item }}"
+            state: absent
+          loop:
+            - /tmp/Hack.zip
+            - /tmp/hack_nerd_font
+
+    # Ripgrep Configuration
+    - name: Create ripgrep config
+      ansible.builtin.copy:
+        dest: ~/.ripgreprc
+        content: |
+          --hidden
+          --glob=!.git/*
+          --glob=!node_modules/*
+          --glob=!.venv/*
+          --glob=!__pycache__/*
+          --glob=!*.pyc
+          --glob=!.DS_Store
+          --smart-case
+          --colors=line:style:bold
+          --colors=path:fg:green
+          --colors=match:fg:red
+          --colors=match:style:bold
+
+    # Git Configuration
+    - name: Configure Git
+      ansible.builtin.git_config:
+        name: "{{ item.name }}"
+        value: "{{ item.value }}"
+        scope: global
+      loop:
+        - { name: "user.name", value: "{{ github_username }}" }
+        - { name: "user.email", value: "{{ github_email }}" }
+        - { name: "user.signingkey", value: "~/.ssh/{{ ssh_key_name }}.pub" }
+        - { name: "core.editor", value: "code --wait" }
+        - { name: "push.autoSetupRemote", value: "true" }
+        - { name: "init.defaultBranch", value: "main" }
+        - { name: "rerere.enabled", value: "true" }
+        - { name: "pull.rebase", value: "true" }
+        - { name: "merge.conflictstyle", value: "zdiff3" }
+        - { name: "color.ui", value: "auto" }
+        - { name: "diff.algorithm", value: "histogram" }
+        - { name: "diff.context", value: "10" }
+        - { name: "branch.sort", value: "-committerdate" }
+        - { name: "fetch.prune", value: "true" }
+        - { name: "log.date", value: "iso-local" }
+        - { name: "log.showsignature", value: "true" }
+        - { name: "push.followtags", value: "true" }
+        - { name: "commit.gpgsign", value: "true" }
+        - { name: "gpg.format", value: "ssh" }
+        - { name: "gpg.ssh.allowedSignersFile", value: "~/.ssh/allowed_signers" }
+        - { name: "diff.tool", value: "difftastic" }
+        - { name: "diff.external", value: "difft" }
+        - { name: "difftool.difftastic.cmd", value: "difft \"$LOCAL\" \"$REMOTE\"" }
+        - { name: "difftool.prompt", value: "false" }
+        - { name: "alias.log", value: "log --name-status" }
+        - { name: "alias.lg", value: "log --name-status" }
+
+    - name: Create SSH allowed signers file
+      ansible.builtin.shell: |
+        echo "{{ github_email }} namespaces=\"git\" $(cat ~/.ssh/{{ ssh_key_name }}.pub)" > ~/.ssh/allowed_signers
+        chmod u=rw,g=r,o=r ~/.ssh/allowed_signers
+
+    # Final Setup
+    - name: Display SSH public key
+      ansible.builtin.shell: cat ~/.ssh/{{ ssh_key_name }}.pub
+      register: ssh_public_key
+      changed_when: false
+
+    - name: Show next steps
+      ansible.builtin.debug:
+        msg: |
+          Setup complete! Next steps:
+          1. Add this SSH key to your GitHub account:
+             {{ ssh_public_key.stdout }}
+          2. Restart your terminal or run: source ~/.zshrc
+          3. Install VS Code extensions manually or run the extensions playbook
+
+    # Verification Steps
+    - name: Verify installations
+      block:
+        - name: Check critical tools
+          ansible.builtin.shell: "command -v {{ item }}"
+          loop:
+            - git
+            - zsh
+            - brew
+            - starship
+            - fzf
+            - rg
+            - fd
+            - eza
+          register: tool_checks
+          failed_when: false
+
+        - name: Display verification results
+          ansible.builtin.debug:
+            msg: |
+              Installation Verification:
+              {% for result in tool_checks.results %}
+              {{ result.item }}: {{ 'OK' if result.rc == 0 else 'MISSING' }}
+              {% endfor %}
+
+        - name: Check SSH key
+          ansible.builtin.stat:
+            path: "~/.ssh/{{ ssh_key_name }}"
+          register: ssh_key_stat
+
+        - name: Check .zshrc
+          ansible.builtin.stat:
+            path: ~/.zshrc
+          register: zshrc_stat
+
+        - name: Final verification summary
+          ansible.builtin.debug:
+            msg: |
+              Final Setup Status:
+              SSH Key: {{ 'OK' if ssh_key_stat.stat.exists else 'MISSING' }}
+              Zsh Config: {{ 'OK' if zshrc_stat.stat.exists else 'MISSING' }}
+              Ripgrep Config: {{ 'OK' if ansible_env.RIPGREP_CONFIG_PATH is defined else 'MISSING' }}
+              
+              {% if tool_checks.results | selectattr('rc', 'ne', 0) | list | length > 0 %}
+              WARNING: Some tools failed to install. Check the output above.
+              {% else %}
+              SUCCESS: All core tools installed successfully!
+              {% endif %}
+
+              Backup created at: {{ backup_dir }}
+              To rollback: bash {{ backup_dir }}/rollback.sh
