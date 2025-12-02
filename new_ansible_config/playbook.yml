@@ -2,12 +2,6 @@
 - name: Development Environment Setup
   hosts: local
   vars_prompt:
-    - name: github_email
-      prompt: "GitHub email address"
-      private: false
-    - name: github_username
-      prompt: "GitHub username"
-      private: false
     - name: ssh_key_name
       prompt: "SSH key filename (default: id_ed25519)"
       default: "id_ed25519"
@@ -18,13 +12,50 @@
       confirm: true
 
   vars:
-    is_macos: "{{ ansible_os_family == 'Darwin' }}"
-    is_linux: "{{ ansible_os_family == 'Debian' or ansible_os_family == 'RedHat' }}"
-    homebrew_prefix: "{{ '/opt/homebrew' if ansible_architecture == 'arm64' else '/usr/local' }}"
+    is_macos: "{{ ansible_facts['os_family'] == 'Darwin' }}"
+    is_linux: "{{ ansible_facts['os_family'] == 'Debian' or ansible_facts['os_family'] == 'RedHat' }}"
+    homebrew_prefix: "{{ '/opt/homebrew' if ansible_facts['architecture'] == 'arm64' else '/usr/local' }}"
     seconds_in_day: 86400
-    backup_timestamp: "{{ ansible_date_time.epoch }}"
+    backup_timestamp: "{{ ansible_facts['date_time']['epoch'] }}"
     backup_dir: "~/.config/ansible-setup-backups/{{ backup_timestamp }}"
-    
+    env_path: "{{ ansible_facts['env']['PATH'] | default('') }}"
+    env_home: "{{ ansible_facts['env']['HOME'] | default(ansible_facts['user_dir'] | default('~')) }}"
+
+  pre_tasks:
+    - name: Detect existing Git username
+      ansible.builtin.command: git config --global user.name
+      register: existing_git_username
+      changed_when: false
+      failed_when: false
+
+    - name: Detect existing Git email
+      ansible.builtin.command: git config --global user.email
+      register: existing_git_email
+      changed_when: false
+      failed_when: false
+
+    - name: Set GitHub facts from existing config
+      ansible.builtin.set_fact:
+        github_username: "{{ existing_git_username.stdout | default('') }}"
+        github_email: "{{ existing_git_email.stdout | default('') }}"
+
+    - name: Prompt for GitHub username when missing
+      ansible.builtin.pause:
+        prompt: "GitHub username"
+      register: github_username_prompt
+      when: github_username | length == 0
+
+    - name: Prompt for GitHub email when missing
+      ansible.builtin.pause:
+        prompt: "GitHub email address"
+      register: github_email_prompt
+      when: github_email | length == 0
+
+    - name: Finalize GitHub facts
+      ansible.builtin.set_fact:
+        github_username: "{{ github_username if (github_username | length > 0) else github_username_prompt.user_input }}"
+        github_email: "{{ github_email if (github_email | length > 0) else github_email_prompt.user_input }}"
+
   tasks:
     # Create backup directory
     - name: Create backup directory
@@ -32,6 +63,30 @@
         path: "{{ backup_dir }}"
         state: directory
         mode: 'u=rwx,g=,o='
+
+    - name: Ensure .ssh directory exists for backup
+      ansible.builtin.file:
+        path: ~/.ssh
+        state: directory
+        mode: 'u=rwx,g=,o='
+
+    - name: Check config files for backup
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop:
+        - "~/.zshrc"
+        - "~/.gitconfig"
+        - "~/.ssh/config"
+        - "~/.ripgreprc"
+      register: config_files_stat
+
+    - name: Create missing config files for backup
+      ansible.builtin.file:
+        path: "{{ item.item }}"
+        state: touch
+        mode: 'u=rw,g=,o='
+      loop: "{{ config_files_stat.results }}"
+      when: not item.stat.exists
 
     - name: Backup existing configurations
       ansible.builtin.copy:
@@ -69,7 +124,7 @@
       ansible.builtin.apt:
         update_cache: true
         cache_valid_time: 3600
-      when: is_linux and ansible_pkg_mgr == 'apt'
+      when: is_linux and ansible_facts['pkg_mgr'] == 'apt'
 
     - name: Install essential packages (Linux)
       become: true
@@ -81,7 +136,7 @@
           - zsh
           - ca-certificates
         state: present
-      when: is_linux and ansible_pkg_mgr == 'apt'
+      when: is_linux and ansible_facts['pkg_mgr'] == 'apt'
 
     # Homebrew Installation
     - name: Check if Homebrew is installed
@@ -131,53 +186,50 @@
     - name: Set zsh as default shell (Linux)
       become: true
       ansible.builtin.user:
-        name: "{{ ansible_user_id }}"
+        name: "{{ ansible_facts['user_id'] }}"
         shell: /bin/zsh
       when: is_linux
 
     - name: Set zsh as default shell (macOS)
-      ansible.builtin.shell: |
-        chsh -s /bin/zsh
-      when: is_macos
+      become: true
+      ansible.builtin.shell: chsh -s /bin/zsh {{ ansible_facts['user_id'] }}
+      when: is_macos and ansible_facts['user_shell'] != '/bin/zsh'
 
     # Development Tools via Homebrew
     - name: Update Homebrew
       community.general.homebrew:
         update_homebrew: true
 
-    - name: Install development tools (async)
+    - name: Install development tools
       community.general.homebrew:
-        name: "{{ item }}"
+        name:
+          - bat
+          - eza
+          - fd
+          - fzf
+          - ripgrep
+          - git
+          - direnv
+          - zoxide
+          - starship
+          - just
+          - tldr
+          - kubectl
+          - pyenv
+          - pyenv-virtualenv
+          - poetry
+          - nvm
+          - go
+          - uv
+          - jq
+          - btop
+          - difftastic
+          - gum
+          - dust
+          - ctop
+          - glow
+          - superfile
         state: present
-      loop:
-        - bat
-        - eza
-        - fd
-        - fzf
-        - ripgrep
-        - git
-        - direnv
-        - zoxide
-        - starship
-        - just
-        - tldr
-        - kubectl
-        - pyenv
-        - poetry
-        - nvm
-        - go
-        - uv
-        - jq
-        - btop
-        - difftastic
-        - gum
-        - dust
-        - ctop
-        - glow
-        - superfile
-      async: 300
-      poll: 0
-      register: homebrew_jobs
 
     # Install Zsh plugins
     - name: Install zsh-syntax-highlighting (macOS)
@@ -199,22 +251,35 @@
           - zsh-syntax-highlighting
           - zsh-autosuggestions
         state: present
-      when: is_linux and ansible_pkg_mgr == 'apt'
+      when: is_linux and ansible_facts['pkg_mgr'] == 'apt'
 
     # Rust Installation
     - name: Check if Rust is installed
-      ansible.builtin.shell: command -v cargo
+      ansible.builtin.command: command -v cargo
       register: rust_check
-      ignore_errors: true
       changed_when: false
+      failed_when: false
+      environment:
+        PATH: "{{ env_path }}:{{ env_home }}/.cargo/bin"
 
-    - name: Install Rust (async)
+    - name: Install Rust
       ansible.builtin.shell: |
         curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
       when: rust_check.rc != 0
-      async: 300
-      poll: 0
-      register: rust_job
+      register: rust_install
+      changed_when: "'installed' in rust_install.stdout or rust_install.rc == 0"
+      failed_when: rust_install.rc != 0
+      environment:
+        PATH: "{{ env_path }}:{{ env_home }}/.cargo/bin"
+
+    - name: Verify Rust installation
+      ansible.builtin.command: cargo --version
+      register: rust_verify
+      changed_when: false
+      failed_when: rust_verify.rc != 0
+      when: rust_check.rc != 0
+      environment:
+        PATH: "{{ env_path }}:{{ env_home }}/.cargo/bin"
 
     # Docker Installation (Linux only)
     - name: Install Docker (Linux)
@@ -229,7 +294,7 @@
         - name: Add Docker repository
           become: true
           ansible.builtin.apt_repository:
-            repo: "deb [arch=amd64] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+            repo: "deb [arch=amd64] https://download.docker.com/linux/ubuntu {{ ansible_facts['distribution_release'] }} stable"
             state: present
 
         - name: Install Docker
@@ -247,20 +312,9 @@
         - name: Add user to docker group
           become: true
           ansible.builtin.user:
-            name: "{{ ansible_user_id }}"
+            name: "{{ ansible_facts['user_id'] }}"
             groups: docker
             append: true
-
-    # Wait for async installations to complete
-    - name: Wait for Homebrew installations
-      async_status:
-        jid: "{{ item.ansible_job_id }}"
-      loop: "{{ homebrew_jobs.results }}"
-      register: homebrew_result
-      until: homebrew_result.finished
-      retries: 60
-      delay: 5
-      when: homebrew_jobs is defined
 
     - name: Wait for Rust installation
       async_status:
@@ -276,7 +330,7 @@
     - name: Backup existing .zshrc
       ansible.builtin.copy:
         src: ~/.zshrc
-        dest: ~/.zshrc.backup.{{ ansible_date_time.epoch }}
+        dest: ~/.zshrc.backup.{{ ansible_facts['date_time']['epoch'] }}
         remote_src: true
       ignore_errors: true
 
@@ -309,8 +363,8 @@
         ls ~/.local/share/fonts/ | grep -i hack
         {% endif %}
       register: nerd_font_check
-      ignore_errors: true
       changed_when: false
+      failed_when: false
 
     - name: Install Hack Nerd Font
       when: nerd_font_check.rc != 0
@@ -321,11 +375,16 @@
             dest: /tmp/Hack.zip
             mode: 'u=rw,g=r,o=r'
 
+        - name: Ensure font extract directory exists
+          ansible.builtin.file:
+            path: /tmp/hack_nerd_font
+            state: directory
+            mode: 'u=rwx,g=rx,o=rx'
+
         - name: Extract Hack Nerd Font
           ansible.builtin.unarchive:
             src: /tmp/Hack.zip
             dest: /tmp/hack_nerd_font
-            creates: /tmp/hack_nerd_font
             remote_src: true
 
         - name: Install font files (macOS)
@@ -393,7 +452,7 @@
         - { name: "user.name", value: "{{ github_username }}" }
         - { name: "user.email", value: "{{ github_email }}" }
         - { name: "user.signingkey", value: "~/.ssh/{{ ssh_key_name }}.pub" }
-        - { name: "core.editor", value: "code --wait" }
+        - { name: "core.editor", value: "vim" }
         - { name: "push.autoSetupRemote", value: "true" }
         - { name: "init.defaultBranch", value: "main" }
         - { name: "rerere.enabled", value: "true" }
@@ -478,7 +537,7 @@
               Final Setup Status:
               SSH Key: {{ 'OK' if ssh_key_stat.stat.exists else 'MISSING' }}
               Zsh Config: {{ 'OK' if zshrc_stat.stat.exists else 'MISSING' }}
-              Ripgrep Config: {{ 'OK' if ansible_env.RIPGREP_CONFIG_PATH is defined else 'MISSING' }}
+              Ripgrep Config: {{ 'OK' if (ansible_facts['env'].get('RIPGREP_CONFIG_PATH') | default('')) else 'MISSING' }}
               
               {% if tool_checks.results | selectattr('rc', 'ne', 0) | list | length > 0 %}
               WARNING: Some tools failed to install. Check the output above.
